@@ -33,6 +33,7 @@ const (
 var arithmeticChecker = regexp.MustCompile(`^(add|sub|neg|eq|gt|lt|and|or|not)$`)
 var pushalphaChecker = regexp.MustCompile(`^push constant \d+$`)
 var pushbetaChecker = regexp.MustCompile(`^push (local|argument|this|that|pointer|temp|constant|static) \d+$`)
+var popChecker = regexp.MustCompile(`^pop (local|argument|this|that|pointer|temp|constant|static) \d+$`)
 
 func NewParser(file *os.File, writer code.Writer) Parser {
 	return Parser{
@@ -67,6 +68,8 @@ func (p *Parser) Advance() {
 		p.writer.WriteArithmetic(p.Command)
 	case C_PUSH:
 		p.writer.WritePushPop("push", p.arg1(), p.arg2())
+	case C_POP:
+		p.writer.WritePushPop("pop", p.arg1(), p.arg2())
 	default:
 		fmt.Println("unexpected command")
 		os.Exit(1)
@@ -76,8 +79,10 @@ func (p *Parser) Advance() {
 func (p *Parser) CommandType() int {
 	if arithmeticChecker.MatchString(p.Command) {
 		return C_ARITHMETIC
-	} else if pushalphaChecker.MatchString(p.Command) {
+	} else if pushbetaChecker.MatchString(p.Command) {
 		return C_PUSH
+	} else if popChecker.MatchString(p.Command) {
+		return C_POP
 	}
 	fmt.Println("unexpected token")
 	os.Exit(1)

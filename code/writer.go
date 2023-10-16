@@ -3,6 +3,7 @@ package code
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 const (
@@ -10,6 +11,7 @@ const (
 	SP_SUB_1                   = "@SP\nM=M-1\n"
 	SP_ADD_1                   = "@SP\nM=M+1\n"
 	SP_INITIALIZE              = "@256\nD=A\n@SP\nM=D\n"
+	INSERT_DREGISTA_TO_SP      = "@SP\nA=M\nM=D\n"
 )
 
 type Writer struct {
@@ -26,7 +28,7 @@ func NewWriter(of *os.File) Writer {
 }
 
 func (w *Writer) SetFileName(filename string) {
-	w.filename = filename
+	w.filename = strings.TrimRight(filename, ".vm")
 }
 
 func (w *Writer) WriteArithmetic(command string) {
@@ -135,19 +137,185 @@ func (w *Writer) WriteArithmetic(command string) {
 func (w *Writer) WritePushPop(command, segment string, index int) {
 	switch command {
 	case "push":
-		switch segment {
-		case "constant":
-			w.write(fmt.Sprintf("@%v\n", index))
-			w.write("D=A\n")
-			w.write("@SP\n")
-			w.write("A=M\n")
-			w.write("M=D\n")
-			w.write(SP_ADD_1)
-		default:
-			fmt.Println("unexpected segment")
-			os.Exit(1)
-		}
+		w.WritePush(segment, index)
+	case "pop":
+		w.WritePop(segment, index)
+	default:
+		fmt.Println("unexpected vm code")
+		os.Exit(1)
 	}
+}
+
+func (w *Writer) WritePush(segment string, index int) {
+	switch segment {
+	case "constant":
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("D=A\n")
+		w.write(INSERT_DREGISTA_TO_SP)
+		w.write(SP_ADD_1)
+	case "local":
+		w.write("@LCL\n")
+		w.write("D=M\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("A=D+A\n")
+		w.write("D=M\n")
+		w.write(INSERT_DREGISTA_TO_SP)
+		w.write(SP_ADD_1)
+	case "argument":
+		w.write("@ARG\n")
+		w.write("D=M\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("A=D+A\n")
+		w.write("D=M\n")
+		w.write(INSERT_DREGISTA_TO_SP)
+		w.write(SP_ADD_1)
+	case "this":
+		w.write("@THIS\n")
+		w.write("D=M\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("A=D+A\n")
+		w.write("D=M\n")
+		w.write(INSERT_DREGISTA_TO_SP)
+		w.write(SP_ADD_1)
+	case "that":
+		w.write("@THAT\n")
+		w.write("D=M\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("A=D+A\n")
+		w.write("D=M\n")
+		w.write(INSERT_DREGISTA_TO_SP)
+		w.write(SP_ADD_1)
+	case "pointer":
+		w.validatePointerIndex(index)
+		w.write("@R3\n")
+		w.write("D=A\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("A=D+A\n")
+		w.write("D=M\n")
+		w.write(INSERT_DREGISTA_TO_SP)
+		w.write(SP_ADD_1)
+	case "temp":
+		w.validateTempIndex(index)
+		w.write("@R5\n")
+		w.write("D=A\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("A=D+A\n")
+		w.write("D=M\n")
+		w.write(INSERT_DREGISTA_TO_SP)
+		w.write(SP_ADD_1)
+	case "static":
+		w.write(fmt.Sprintf("@%s.%v\n", w.filename, index))
+		w.write("D=M\n")
+		w.write(INSERT_DREGISTA_TO_SP)
+		w.write(SP_ADD_1)
+	default:
+		fmt.Println("unexpected segment")
+		os.Exit(1)
+	}
+}
+
+func (w *Writer) WritePop(segment string, index int) {
+	switch segment {
+	case "constant":
+		fmt.Println("sorry, I can't understand how to implement")
+		os.Exit(1)
+	case "local":
+		w.write("@LCL\n")
+		w.write("D=M\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("D=D+A\n")
+		w.write("@R13\n")
+		w.write("M=D\n")
+		w.write(SP_MEMORY_DATA_TO_DREGISTA)
+		w.write("@R13\n")
+		w.write("A=M\n")
+		w.write("M=D\n")
+		w.write(SP_SUB_1)
+	case "argument":
+		w.write("@ARG\n")
+		w.write("D=M\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("D=D+A\n")
+		w.write("@R13\n")
+		w.write("M=D\n")
+		w.write(SP_MEMORY_DATA_TO_DREGISTA)
+		w.write("@R13\n")
+		w.write("A=M\n")
+		w.write("M=D\n")
+		w.write(SP_SUB_1)
+	case "this":
+		w.write("@THIS\n")
+		w.write("D=M\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("D=D+A\n")
+		w.write("@R13\n")
+		w.write("M=D\n")
+		w.write(SP_MEMORY_DATA_TO_DREGISTA)
+		w.write("@R13\n")
+		w.write("A=M\n")
+		w.write("M=D\n")
+		w.write(SP_SUB_1)
+	case "that":
+		w.write("@THAT\n")
+		w.write("D=M\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("D=D+A\n")
+		w.write("@R13\n")
+		w.write("M=D\n")
+		w.write(SP_MEMORY_DATA_TO_DREGISTA)
+		w.write("@R13\n")
+		w.write("A=M\n")
+		w.write("M=D\n")
+		w.write(SP_SUB_1)
+	case "pointer":
+		w.validatePointerIndex(index)
+		w.write("@R3\n")
+		w.write("D=A\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("D=D+A\n")
+		w.write("@R13\n")
+		w.write("M=D\n")
+		w.write(SP_MEMORY_DATA_TO_DREGISTA)
+		w.write("@R13\n")
+		w.write("A=M\n")
+		w.write("M=D\n")
+		w.write(SP_SUB_1)
+	case "temp":
+		w.validateTempIndex(index)
+		w.write("@R5\n")
+		w.write("D=A\n")
+		w.write(fmt.Sprintf("@%v\n", index))
+		w.write("D=D+A\n")
+		w.write("@R13\n")
+		w.write("M=D\n")
+		w.write(SP_MEMORY_DATA_TO_DREGISTA)
+		w.write("@R13\n")
+		w.write("A=M\n")
+		w.write("M=D\n")
+		w.write(SP_SUB_1)
+	case "static":
+		w.write(SP_MEMORY_DATA_TO_DREGISTA)
+		w.write(fmt.Sprintf("@%s.%v\n", w.filename, index))
+		w.write("M=D\n")
+		w.write(SP_SUB_1)
+	default:
+		fmt.Println("unexpected segment")
+		os.Exit(1)
+	}
+}
+
+func (w *Writer) validatePointerIndex(index int) {
+	if index == 1 || index == 0 {
+		return
+	}
+	panic("unexpected pointer index")
+}
+
+func (w *Writer) validateTempIndex(index int) {
+	if index >= 0 || index <= 7 {
+		return
+	}
+	panic("unexpected pointer index")
 }
 
 func (w *Writer) write(bin string) error {
