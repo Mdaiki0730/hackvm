@@ -3,3 +3,6 @@
 *.vm
 *.asm
 *.out
+
+# template
+*.html
