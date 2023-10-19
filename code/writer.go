@@ -18,17 +18,24 @@ type Writer struct {
 	outfile                  *os.File
 	filename                 string
 	comparisonOperationIndex int
+	callIndex                int
 }
 
 func NewWriter(of *os.File) Writer {
 	// スタックの物理領域が256-2047なので、SP=256で初期化する
-	w := Writer{outfile: of, comparisonOperationIndex: 0}
-	w.write(SP_INITIALIZE)
+	w := Writer{outfile: of, comparisonOperationIndex: 0, callIndex: 0}
+	w.WriteInit()
 	return w
 }
 
 func (w *Writer) SetFileName(filename string) {
 	w.filename = strings.TrimRight(filename, ".vm")
+	w.write(fmt.Sprintf("// start %s\n", w.filename))
+}
+
+func (w *Writer) WriteInit() {
+	w.write(SP_INITIALIZE)
+	w.WriteCall("Sys.init", 0)
 }
 
 func (w *Writer) WriteArithmetic(command string) {
@@ -144,6 +151,153 @@ func (w *Writer) WritePushPop(command, segment string, index int) {
 		fmt.Println("unexpected vm code")
 		os.Exit(1)
 	}
+}
+
+func (w *Writer) WriteLabel(label string) {
+	w.write(fmt.Sprintf("(%s)\n", label))
+}
+
+func (w *Writer) WriteGoto(label string) {
+	w.write(fmt.Sprintf("@%s\n", label))
+	w.write("0;JMP\n")
+}
+
+func (w *Writer) WriteIf(label string) {
+	w.write(SP_MEMORY_DATA_TO_DREGISTA)
+	w.write(SP_SUB_1)
+	w.write(fmt.Sprintf("@%s\n", label))
+	w.write("D;JNE\n")
+}
+
+func (w *Writer) WriteFunction(functionName string, numLocals int) {
+	w.write(fmt.Sprintf("(%s)\n", functionName))
+	for i := 0; i < numLocals; i++ {
+		w.WritePush("constant", 0)
+	}
+}
+
+func (w *Writer) WriteCall(functionName string, numArgs int) {
+	w.callIndex++
+	// push return-address
+	w.write(fmt.Sprintf("@return-address%v\n", w.callIndex))
+	w.write("D=A\n")
+	w.write(INSERT_DREGISTA_TO_SP)
+	w.write(SP_ADD_1)
+
+	// push lcl
+	w.write("@LCL\n")
+	w.write("D=M\n")
+	w.write(INSERT_DREGISTA_TO_SP)
+	w.write(SP_ADD_1)
+
+	// push arg
+	w.write("@ARG\n")
+	w.write("D=M\n")
+	w.write(INSERT_DREGISTA_TO_SP)
+	w.write(SP_ADD_1)
+
+	// push this
+	w.write("@THIS\n")
+	w.write("D=M\n")
+	w.write(INSERT_DREGISTA_TO_SP)
+	w.write(SP_ADD_1)
+
+	// push that
+	w.write("@THAT\n")
+	w.write("D=M\n")
+	w.write(INSERT_DREGISTA_TO_SP)
+	w.write(SP_ADD_1)
+
+	// ARG = SP-n-5
+	w.write("@SP\n")
+	w.write("D=M\n")
+	w.write(fmt.Sprintf("@%v\n", numArgs))
+	w.write("D=D-A\n")
+	w.write("@5\n")
+	w.write("D=D-A\n")
+	w.write("@ARG\n")
+	w.write("M=D\n")
+
+	// LCL = SP
+	w.write("@SP\n")
+	w.write("D=M\n")
+	w.write("@LCL\n")
+	w.write("M=D\n")
+
+	// goto f
+	w.WriteGoto(functionName)
+
+	// def return-address
+	w.WriteLabel(fmt.Sprintf("return-address%v", w.callIndex))
+}
+
+func (w *Writer) WriteReturn() {
+	// store local to r13
+	w.write("@LCL\n")
+	w.write("D=M\n")
+	w.write("@R13\n")
+	w.write("M=D\n")
+
+	// store ret address to r14
+	w.write("@5\n")
+	w.write("A=D-A\n")
+	w.write("D=M\n")
+	w.write("@R14\n")
+	w.write("M=D\n")
+
+	// pop retval and insert stack top
+	w.write(SP_MEMORY_DATA_TO_DREGISTA)
+	w.write(SP_SUB_1)
+	w.write("@ARG\n")
+	w.write("A=M\n")
+	w.write("M=D\n")
+
+	// restore sp
+	w.write("@ARG\n")
+	w.write("D=M+1\n")
+	w.write("@SP\n")
+	w.write("M=D\n")
+
+	// restore that
+	w.write("@R13\n")
+	w.write("D=M\n")
+	w.write("@1\n")
+	w.write("A=D-A\n")
+	w.write("D=M\n")
+	w.write("@THAT\n")
+	w.write("M=D\n")
+
+	// restore this
+	w.write("@R13\n")
+	w.write("D=M\n")
+	w.write("@2\n")
+	w.write("A=D-A\n")
+	w.write("D=M\n")
+	w.write("@THIS\n")
+	w.write("M=D\n")
+
+	// restore arg
+	w.write("@R13\n")
+	w.write("D=M\n")
+	w.write("@3\n")
+	w.write("A=D-A\n")
+	w.write("D=M\n")
+	w.write("@ARG\n")
+	w.write("M=D\n")
+
+	// restore local
+	w.write("@R13\n")
+	w.write("D=M\n")
+	w.write("@4\n")
+	w.write("A=D-A\n")
+	w.write("D=M\n")
+	w.write("@LCL\n")
+	w.write("M=D\n")
+
+	// goto ret
+	w.write("@R14\n")
+	w.write("A=M\n")
+	w.write("0;JMP\n")
 }
 
 func (w *Writer) WritePush(segment string, index int) {

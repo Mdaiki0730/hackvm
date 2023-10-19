@@ -49,7 +49,7 @@ func main() {
 			}
 
 			writer.SetFileName(filename)
-			p := parser.NewParser(f, writer)
+			p := parser.NewParser(f, &writer)
 			for p.HasMoreCommands() {
 				p.Advance()
 			}
